@@ -1,4 +1,4 @@
-package main
+package async_script
 
 import (
 	"bitbucket.org/creachadair/shell"
@@ -344,38 +344,3 @@ func (p *ReplaceAsyncPipe) Run() error {
 	return nil
 }
 
-func main() {
-	var args struct {
-		Commit string `arg:"-c" placeholder:"git commit"`
-		Debug  bool   `arg:"-d"`
-	}
-
-	arg.MustParse(&args)
-
-	walletImgTag := "docker.private-company.ru/platform/wallet:v0.0.1-" + args.Commit
-
-	fmt.Printf("*** RUN integration tests commit_id: %v debug_mode: %v ***\n", args.Commit, args.Debug)
-
-	ops := []AsyncPipe{
-		&FileAsyncPipe{"docker-compose.test.yml", nil},
-		Replace("WALLET_IMAGE", walletImgTag),
-	}
-	if args.Debug {
-		ops = append(ops, Replace("#DEBUG_MODE: ", ""))
-	}
-
-	ops = append(ops, &FileToAsyncPipe{"docker-compose.test.tmp.yml", nil})
-
-	ExecutePipes(
-		ops...,
-	)
-
-	ExecutePipes(
-		ExecAsync("docker-compose -f docker-compose.test.tmp.yml build --no-cache"),
-		//ExecAsync("docker-compose -f docker-compose.test.tmp.yml up -d --force-recreate"),
-		//Replace("Step", "MyStep"),
-		Watch(),
-	)
-
-	return
-}
