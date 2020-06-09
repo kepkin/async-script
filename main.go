@@ -1,50 +1,27 @@
 package async_script
 
 import (
-	"bitbucket.org/creachadair/shell"
-	"golang.org/x/crypto/ssh/terminal"
 	"bufio"
-	"bytes"
-	"fmt"
-	"github.com/alexflint/go-arg"
 	"io"
 	"io/ioutil"
 	"log"
 	"os"
-	"os/exec"
 	"sync"
-	"time"
 )
 
-func ScanLinesWithoutDrop(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	if atEOF && len(data) == 0 {
-		return 0, nil, nil
-	}
-	if i := bytes.IndexByte(data, '\n'); i >= 0 {
-		// We have a full newline-terminated line.
-		return i + 1, data[0 : i+1], nil
-	}
-	// If we're at EOF, we have a final, non-terminated line. Return it.
-	if atEOF {
-		return len(data), data, nil
-	}
-	// Request more data.
-	return 0, nil, nil
-}
-
-type AsyncPipe interface {
+type Op interface {
 	Run() error
 	SetInput(io.ReadCloser)
 	GetReader() io.ReadCloser
 }
 
-type ExecAsyncPipe struct {
-	cmd *exec.Cmd
-	in  io.ReadCloser
-	out io.ReadCloser
+type Ops []Op
+
+func (r *Ops) Add(ops ...Op) Ops {
+	return append(*r, ops...)
 }
 
-func ExecutePipes(pipes ...AsyncPipe) {
+func Run(pipes ...Op) {
 	wg := sync.WaitGroup{}
 
 	var err error
@@ -73,243 +50,47 @@ func ExecutePipes(pipes ...AsyncPipe) {
 	}
 }
 
-func ExecAsync(cmd string) AsyncPipe {
-	args, ok := shell.Split(cmd) // strings.Fields doesn't handle quotes
-	if !ok {
-		panic("TODO")
-	}
-
-	res := &ExecAsyncPipe{
-		exec.Command(args[0], args[1:]...),
-		nil,
-		nil,
-	}
-
-	return res
-}
-
-func (p *ExecAsyncPipe) SetInput(in io.ReadCloser) {
-	p.cmd.Stdin = in
-}
-
-func (p *ExecAsyncPipe) GetReader() io.ReadCloser {
-	if p.out != nil {
-		return p.out
-	}
-
-	var err error
-	p.out, err = p.cmd.StdoutPipe()
-	if err != nil {
-		panic(err)
-	}
-
-	return p.out
-}
-
-func (p *ExecAsyncPipe) Run() error {
-	if p.cmd.Stdin == nil {
-		p.cmd.Stdin = os.Stdin
-	}
-
-	if p.cmd.Stdout == nil {
-		p.cmd.Stdout = os.Stderr
-	}
-
-	//@TODO: save stderr somewhere
-	if p.cmd.Stderr == nil {
-		p.cmd.Stderr = os.Stderr
-	}
-
-	return p.cmd.Run()
-}
-
-type WatchAsyncPipe struct {
-	in    io.ReadCloser
-	pipeR *os.File
-	pipeW *os.File
-}
-
-func Watch() AsyncPipe {
-	return &WatchAsyncPipe{
-		os.Stdin,
-		nil,
-		nil,
-	}
-}
-
-func (p *WatchAsyncPipe) SetInput(in io.ReadCloser) {
-	p.in = in
-}
-
-func (p *WatchAsyncPipe) GetReader() io.ReadCloser {
-	if p.pipeR != nil {
-		return p.pipeR
-	}
-
-	var err error
-	p.pipeR, p.pipeW, err = os.Pipe()
-	if err != nil {
-		panic(err)
-	}
-
-	return p.pipeR
-}
-
-func (p *WatchAsyncPipe) Run() error {
-	//TODO: check err
-	lastLine := ""
-
-	var err error
-	c := make(chan struct{})
-	go func() {
-		if p.pipeW != nil {
-			defer p.pipeW.Close()
-		}
-
-		scanner := bufio.NewScanner(p.in)
-		for scanner.Scan() {
-			line := scanner.Bytes()
-
-			if len(line) > 1 {
-				lastLine = string(line)
-			}
-
-			if p.pipeW == nil {
-				continue
-			}
-
-			nw, ew := p.pipeW.Write(line)
-			if ew != nil {
-				err = ew
-				break
-			}
-			if len(line) != nw {
-				err = io.ErrShortWrite
-				break
-			}
-		}
-		close(c)
-	}()
-
-	var terminalWidth int
-	if terminal.IsTerminal(int(os.Stdout.Fd())) {
-		terminalWidth, _, _ = terminal.GetSize(int(os.Stdout.Fd()))
-	}
-	clearString := ""
-	for ; terminalWidth > 0; terminalWidth-- {
-		clearString += " "
-	}
-
-
-	for {
-		select {
-		case <-c:
-			fmt.Println()
-			return err
-
-		case <-time.After(time.Second):
-			fmt.Print("\r", clearString)
-			fmt.Print("\r", lastLine)
-
-		}
-	}
-}
-
-type StringAsyncPipe struct {
+type stringOp struct {
 	in io.ReadCloser
 }
 
-func StringPipe() AsyncPipe {
-	return &StringAsyncPipe{
+func String() Op {
+	return &stringOp{
 		os.Stdin,
 	}
 }
 
-func (p *StringAsyncPipe) SetInput(in io.ReadCloser) {
+func (p *stringOp) SetInput(in io.ReadCloser) {
 	p.in = in
 }
 
-func (p *StringAsyncPipe) GetReader() io.ReadCloser {
+func (p *stringOp) GetReader() io.ReadCloser {
 	panic("Can't get reader from String")
 }
 
-func (p *StringAsyncPipe) Run() error {
+func (p *stringOp) Run() error {
 	_, err := ioutil.ReadAll(p.in)
 	return err
 }
 
-type FileAsyncPipe struct {
-	Path string
-	in   io.ReadCloser
-}
-
-func (p *FileAsyncPipe) SetInput(in io.ReadCloser) {
-	panic("Can't set Input into source")
-}
-
-func (p *FileAsyncPipe) GetReader() io.ReadCloser {
-	if p.in != nil {
-		return p.in
-	}
-
-	var err error
-	p.in, err = os.Open(p.Path)
-	if err != nil {
-		panic(err)
-	}
-	return p.in
-}
-
-func (p *FileAsyncPipe) Run() error {
-	return nil
-}
-
-type FileToAsyncPipe struct {
-	Path string
-	in   io.ReadCloser
-}
-
-func (p *FileToAsyncPipe) SetInput(in io.ReadCloser) {
-	p.in = in
-}
-
-func (p *FileToAsyncPipe) GetReader() io.ReadCloser {
-	panic("not supported")
-}
-
-func (p *FileToAsyncPipe) Run() error {
-	out, err := os.Create(p.Path)
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = io.Copy(out, p.in)
-	return err
-}
-
-type ReplaceAsyncPipe struct {
-	What  []byte
-	To    []byte
+type mapOp struct {
+	f func(string) []string
 	in    io.ReadCloser
 	pipeR *os.File
 	pipeW *os.File
 }
 
-func Replace(what, to string) AsyncPipe {
-	return &ReplaceAsyncPipe{
-		[]byte(what),
-		[]byte(to),
-		nil,
-		nil,
-		nil,
+func Map(f func(string) []string) Op {
+	return &mapOp{
+		f: f,
 	}
 }
 
-func (p *ReplaceAsyncPipe) SetInput(in io.ReadCloser) {
+func (p *mapOp) SetInput(in io.ReadCloser) {
 	p.in = in
 }
 
-func (p *ReplaceAsyncPipe) GetReader() io.ReadCloser {
+func (p *mapOp) GetReader() io.ReadCloser {
 	if p.pipeR != nil {
 		return p.pipeR
 	}
@@ -323,24 +104,23 @@ func (p *ReplaceAsyncPipe) GetReader() io.ReadCloser {
 	return p.pipeR
 }
 
-func (p *ReplaceAsyncPipe) Run() error {
+func (p *mapOp) Run() error {
 	defer p.pipeW.Close()
 
 	scanner := bufio.NewScanner(p.in)
-	scanner.Split(ScanLinesWithoutDrop)
-
 	for scanner.Scan() {
-		line := scanner.Bytes()
-		replaced := bytes.Replace(line, p.What, p.To, -1)
-		nw, ew := p.pipeW.Write(replaced)
-		if ew != nil {
-			return ew
-		}
-		if len(replaced) != nw {
-			return io.ErrShortWrite
+		line := scanner.Text()
+		outLines := p.f(line)
+		for _, outLine := range outLines {
+			nw, ew := p.pipeW.WriteString(outLine)
+			if ew != nil {
+				return ew
+			}
+			if len(outLine) != nw {
+				return io.ErrShortWrite
+			}
 		}
 	}
 
 	return nil
 }
-
