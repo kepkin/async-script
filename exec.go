@@ -9,12 +9,13 @@ import (
 )
 
 type execOp struct {
-	cmd *exec.Cmd
-	in  io.ReadCloser
-	out io.ReadCloser
+	cmd           *exec.Cmd
+	stderrToStdin bool
+	in            io.ReadCloser
+	out           io.ReadCloser
 }
 
-func ExecWithCmd(cmdString string, cmd exec.Cmd) Op {
+func ExecWithCmd(cmdString string, cmd exec.Cmd, stderrToStdin bool) Op {
 	res := &execOp{}
 
 	if cmdString != "" {
@@ -27,6 +28,7 @@ func ExecWithCmd(cmdString string, cmd exec.Cmd) Op {
 
 	res.cmd.Dir = cmd.Dir
 	res.cmd.Env = cmd.Env
+	res.stderrToStdin = stderrToStdin
 
 	return res
 }
@@ -39,6 +41,7 @@ func Exec(cmd string) Op {
 
 	res := &execOp{
 		exec.Command(args[0], args[1:]...),
+		false,
 		nil,
 		nil,
 	}
@@ -73,9 +76,8 @@ func (p *execOp) Run() error {
 		p.cmd.Stdout = os.Stderr
 	}
 
-	//@TODO: save stderr somewhere
-	if p.cmd.Stderr == nil {
-		p.cmd.Stderr = os.Stderr
+	if p.stderrToStdin {
+		p.cmd.Stderr = p.cmd.Stdout
 	}
 
 	return p.cmd.Run()

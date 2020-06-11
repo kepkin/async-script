@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"sync"
 )
@@ -21,7 +20,7 @@ func (r *Ops) Add(ops ...Op) Ops {
 	return append(*r, ops...)
 }
 
-func Run(pipes ...Op) {
+func Run(pipes ...Op) error {
 	wg := sync.WaitGroup{}
 
 	var err error
@@ -45,9 +44,7 @@ func Run(pipes ...Op) {
 	}
 	wg.Wait()
 
-	if err != nil {
-		log.Fatal(err)
-	}
+	return err
 }
 
 type stringOp struct {

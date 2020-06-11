@@ -5,22 +5,29 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
+	"strings"
 
 	"golang.org/x/crypto/ssh/terminal"
 )
 
+const ttyClearAfterCursor = "\u001b[0J"
+const ttyCursorUp = "\u001b[%vA"
+
 type WatchAsyncPipe struct {
-	in    io.ReadCloser
-	pipeR *os.File
-	pipeW *os.File
+	in     io.ReadCloser
+	pipeR  *os.File
+	pipeW  *os.File
+	buf    []string
+	bufIdx int
 }
 
-func Watch() Op {
+func Watch(lines int) Op {
 	return &WatchAsyncPipe{
 		os.Stdin,
 		nil,
 		nil,
+		make([]string, lines, lines),
+		0,
 	}
 }
 
@@ -42,12 +49,38 @@ func (p *WatchAsyncPipe) GetReader() io.ReadCloser {
 	return p.pipeR
 }
 
-func (p *WatchAsyncPipe) Run() error {
-	//TODO: check err
-	lastLine := ""
+func (p *WatchAsyncPipe) addBufLine(line string) {
+	p.buf[p.bufIdx] = line
 
+	p.bufIdx += 1
+	if p.bufIdx >= len(p.buf) {
+		p.bufIdx = 0
+	}
+}
+
+func (p *WatchAsyncPipe) printBufLine() {
+	fmt.Print(ttyClearAfterCursor)
+	//linesUp := 0
+	//terminalWidth, _, _ := terminal.GetSize(int(os.Stdout.Fd()))
+
+	for i := 0; i < len(p.buf); i++ {
+		idx := i + p.bufIdx
+		if idx >= len(p.buf) {
+			idx -= len(p.buf)
+		}
+
+		//if len(p.buf[idx]) > terminalWidth {
+		//	linesUp += len(p.buf[idx]) / terminalWidth
+		//}
+		fmt.Println(p.buf[idx])
+	}
+
+	fmt.Printf(ttyCursorUp, len(p.buf))
+}
+
+func (p *WatchAsyncPipe) Run() error {
 	var err error
-	c := make(chan struct{})
+	c := make(chan string)
 	go func() {
 		if p.pipeW != nil {
 			defer p.pipeW.Close()
@@ -56,10 +89,7 @@ func (p *WatchAsyncPipe) Run() error {
 		scanner := bufio.NewScanner(p.in)
 		for scanner.Scan() {
 			line := scanner.Bytes()
-
-			if len(line) > 1 {
-				lastLine = string(line)
-			}
+			c <- strings.TrimSpace(string(line))
 
 			if p.pipeW == nil {
 				continue
@@ -87,16 +117,12 @@ func (p *WatchAsyncPipe) Run() error {
 		clearString += " "
 	}
 
-	for {
-		select {
-		case <-c:
-			fmt.Println()
-			return err
-
-		case <-time.After(time.Second):
-			fmt.Print("\r", clearString)
-			fmt.Print("\r", lastLine)
-
-		}
+	for d := range c {
+		p.addBufLine(d)
+		p.printBufLine()
 	}
+
+	fmt.Print(ttyClearAfterCursor)
+
+	return err
 }
