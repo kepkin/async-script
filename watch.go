@@ -79,6 +79,10 @@ func (p *WatchAsyncPipe) printBufLine() {
 }
 
 func (p *WatchAsyncPipe) Run() error {
+	if !terminal.IsTerminal(int(os.Stdout.Fd())) && p.pipeW == nil {
+		p.pipeW = os.Stdout
+	}
+
 	var err error
 	c := make(chan string)
 	go func() {
@@ -87,9 +91,11 @@ func (p *WatchAsyncPipe) Run() error {
 		}
 
 		scanner := bufio.NewScanner(p.in)
+		scanner.Split(ScanLinesWithoutDrop)
+
 		for scanner.Scan() {
 			line := scanner.Bytes()
-			c <- strings.TrimSpace(string(line))
+			c <- strings.TrimRight(string(line), " \t\r\n")
 
 			if p.pipeW == nil {
 				continue
@@ -108,21 +114,18 @@ func (p *WatchAsyncPipe) Run() error {
 		close(c)
 	}()
 
-	var terminalWidth int
-	if terminal.IsTerminal(int(os.Stdout.Fd())) {
-		terminalWidth, _, _ = terminal.GetSize(int(os.Stdout.Fd()))
-	}
-	clearString := ""
-	for ; terminalWidth > 0; terminalWidth-- {
-		clearString += " "
-	}
-
 	for d := range c {
-		p.addBufLine(d)
-		p.printBufLine()
+		if !terminal.IsTerminal(int(os.Stdout.Fd())) {
+			continue
+		} else {
+			p.addBufLine(d)
+			p.printBufLine()	
+		}
 	}
 
-	fmt.Print(ttyClearAfterCursor)
+	if terminal.IsTerminal(int(os.Stdout.Fd())) {
+		fmt.Print(ttyClearAfterCursor)
+	}
 
 	return err
 }
