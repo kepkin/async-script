@@ -86,7 +86,7 @@ func (p *WatchAsyncPipe) Run() error {
 	var err error
 	c := make(chan string)
 	go func() {
-		if p.pipeW != nil {
+		if p.pipeW != nil && p.pipeW != os.Stdout {
 			defer p.pipeW.Close()
 		}
 
@@ -119,7 +119,7 @@ func (p *WatchAsyncPipe) Run() error {
 			continue
 		} else {
 			p.addBufLine(d)
-			p.printBufLine()	
+			p.printBufLine()
 		}
 	}
 
