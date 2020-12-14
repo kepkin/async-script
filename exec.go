@@ -1,6 +1,7 @@
 package async_script
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 )
 
 type execOp struct {
+	originalCmd   string
 	cmd           *exec.Cmd
 	stderrToStdin bool
 	in            io.ReadCloser
@@ -40,8 +42,9 @@ func Exec(cmd string) Op {
 	}
 
 	res := &execOp{
+		cmd,
 		exec.Command(args[0], args[1:]...),
-		false,
+		true,
 		nil,
 		nil,
 	}
@@ -80,5 +83,10 @@ func (p *execOp) Run() error {
 		p.cmd.Stderr = p.cmd.Stdout
 	}
 
-	return p.cmd.Run()
+	err := p.cmd.Run()
+	if err != nil {
+		return fmt.Errorf("Failed to run %v: %w", p.originalCmd, err)
+	}
+
+	return nil
 }
