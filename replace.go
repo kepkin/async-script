@@ -1,67 +1,17 @@
 package async_script
 
 import (
-	"bufio"
 	"bytes"
-	"io"
-	"os"
 )
 
-type ReplaceAsyncPipe struct {
-	What  []byte
-	To    []byte
-	in    io.ReadCloser
-	pipeR *os.File
-	pipeW *os.File
-}
-
 func Replace(what, to string) Op {
-	return &ReplaceAsyncPipe{
-		[]byte(what),
-		[]byte(to),
-		nil,
-		nil,
-		nil,
-	}
+	return Transformer(ScanLinesWithoutDrop, replaceTransform([]byte(what), []byte(to)))
 }
 
-func (p *ReplaceAsyncPipe) SetInput(in io.ReadCloser) {
-	p.in = in
-}
-
-func (p *ReplaceAsyncPipe) GetReader() io.ReadCloser {
-	if p.pipeR != nil {
-		return p.pipeR
+func replaceTransform(what []byte, to []byte) func([]byte) []byte {
+	return func(in []byte) []byte {
+		return bytes.Replace(in, what, to, -1)
 	}
-
-	var err error
-	p.pipeR, p.pipeW, err = os.Pipe()
-	if err != nil {
-		panic(err)
-	}
-
-	return p.pipeR
-}
-
-func (p *ReplaceAsyncPipe) Run() error {
-	defer p.pipeW.Close()
-
-	scanner := bufio.NewScanner(p.in)
-	scanner.Split(ScanLinesWithoutDrop)
-
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		replaced := bytes.Replace(line, p.What, p.To, -1)
-		nw, ew := p.pipeW.Write(replaced)
-		if ew != nil {
-			return ew
-		}
-		if len(replaced) != nw {
-			return io.ErrShortWrite
-		}
-	}
-
-	return nil
 }
 
 func ScanLinesWithoutDrop(data []byte, atEOF bool) (advance int, token []byte, err error) {
