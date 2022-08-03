@@ -30,7 +30,7 @@ func Example() {
 	packagesForCover := strings.ReplaceAll(packagesForTest, "\n", ",")
 
 	MustRun(
-		Exec("go test %v -coverpkg=%v -coverprofile=./coverage.out", packagesForTest, packagesForCover),
+		Execf("go test %v -coverpkg=%v -coverprofile=./coverage.out", packagesForTest, packagesForCover),
 		Tee("go-test.log"),
 	)
 }

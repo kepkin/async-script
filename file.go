@@ -11,6 +11,7 @@ type fromFile struct {
 	in   io.ReadCloser
 }
 
+// Get content of the file and pass it as STDIN to next Op
 func FromFile(path string) Op {
 	return &fromFile{
 		Path: path,
