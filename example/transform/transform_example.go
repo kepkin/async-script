@@ -9,7 +9,7 @@ import (
 func main() {
 
 	var res string
-	Run(
+	MustRun(
 		Exec("echo one two three"),
 		Replace("three", "one"),
 		Filter("two"),

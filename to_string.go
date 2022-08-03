@@ -6,8 +6,8 @@ import (
 )
 
 type toString struct {
-	dst  *string
-	in    io.ReadCloser
+	dst *string
+	in  io.ReadCloser
 }
 
 func ToString(dst *string) Op {

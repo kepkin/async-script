@@ -1,6 +1,7 @@
 package async_script
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -33,6 +34,11 @@ func ExecWithCmd(cmdString string, cmd exec.Cmd, stderrToStdin bool) Op {
 	return res
 }
 
+func Execf(cmd string, a ...interface{}) Op {
+	return Exec(fmt.Sprintf(cmd, a...))
+}
+
+// Runs shell command
 func Exec(cmd string) Op {
 	args, ok := shell.Split(cmd) // strings.Fields doesn't handle quotes
 	if !ok {

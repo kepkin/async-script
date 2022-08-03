@@ -47,7 +47,7 @@ type toFile struct {
 func ToFile(path string) Op {
 	return &toFile{
 		Path: path,
-		in: nil,
+		in:   nil,
 	}
 }
 
@@ -68,7 +68,6 @@ func (p *toFile) Run() error {
 	_, err = io.Copy(out, p.in)
 	return err
 }
-
 
 type glob struct {
 	Path  string

@@ -1,9 +1,14 @@
+// Package implements shell like DSL for executing commands and making
+// transformations. Main motivation was to write CI/CD scripts in Go instead of
+// Makefile/bash etc.
+//
 package async_script
 
 import (
 	"bufio"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"sync"
 )
@@ -20,6 +25,9 @@ func (r *Ops) Add(ops ...Op) Ops {
 	return append(*r, ops...)
 }
 
+// Run a chain of operations similar to shell:
+// $> op1 | op2 | op3
+// Returns errors if one of the operation fails
 func Run(pipes ...Op) error {
 	wg := sync.WaitGroup{}
 
@@ -47,10 +55,20 @@ func Run(pipes ...Op) error {
 	return err
 }
 
+// The same as Run, but if one of operations fails will call
+// log.Fatal(err) and stops execution
+func MustRun(pipes ...Op) {
+	err := Run(pipes...)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
 type stringOp struct {
 	in io.ReadCloser
 }
 
+// TODO
 func String() Op {
 	return &stringOp{
 		os.Stdin,
@@ -71,7 +89,7 @@ func (p *stringOp) Run() error {
 }
 
 type mapOp struct {
-	f func(string) []string
+	f     func(string) []string
 	in    io.ReadCloser
 	pipeR *os.File
 	pipeW *os.File
@@ -101,6 +119,7 @@ func (p *mapOp) GetReader() io.ReadCloser {
 	return p.pipeR
 }
 
+// TODO: reuse transformer code
 func (p *mapOp) Run() error {
 	defer p.pipeW.Close()
 

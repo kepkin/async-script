@@ -4,7 +4,7 @@ import . "github.com/kepkin/async-script"
 
 func main() {
 
-	Run(
+	MustRun(
 		Exec("bash print_data.sh"),
 		Watch(5),
 	)
